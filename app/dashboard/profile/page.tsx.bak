@@ -1,0 +1,739 @@
+"use client"
+
+import { useState, useEffect, useRef, Suspense } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import Link from "next/link"
+import {
+  ArrowLeft,
+  Upload,
+  MessageSquare,
+  Check,
+  ArrowRight,
+  Plus,
+  Sparkles,
+  ChevronDown,
+  X,
+  Loader2,
+} from "lucide-react"
+import { ThemeToggle } from "@/components/ui/theme-toggle"
+import { BottomNav } from "@/components/ui/bottom-nav"
+
+type ProfileStage = "start" | "questions" | "ready" | "details"
+
+interface ProfileData {
+  field: string
+  fieldOther: string
+  bio: string
+  achievement: string
+  goals: string[]
+  experiences: string[]
+  tone: string
+}
+
+const defaultProfile: ProfileData = {
+  field: "",
+  fieldOther: "",
+  bio: "",
+  achievement: "",
+  goals: [],
+  experiences: [],
+  tone: "professional",
+}
+
+const fieldOptions = [
+  "Computer Science",
+  "Engineering",
+  "Business",
+  "Medicine / Health",
+  "Law",
+  "Arts & Humanities",
+  "Social Sciences",
+  "Natural Sciences",
+  "Education",
+]
+
+const goalOptions = [
+  "Fund my education",
+  "Start a project or venture",
+  "Conduct research",
+  "Gain work experience",
+  "Build my network",
+  "Make a career change",
+]
+
+const toneOptions = [
+  { value: "professional", label: "Professional", desc: "Formal and polished" },
+  { value: "conversational", label: "Conversational", desc: "Friendly and approachable" },
+  { value: "academic", label: "Academic", desc: "Scholarly and precise" },
+  { value: "passionate", label: "Passionate", desc: "Enthusiastic and driven" },
+]
+
+function ProfilePageContent() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const [isLoading, setIsLoading] = useState(true)
+  const [stage, setStage] = useState<ProfileStage>("start")
+  const [currentQuestion, setCurrentQuestion] = useState(0)
+  const [profile, setProfile] = useState<ProfileData>(defaultProfile)
+  const [showAddMore, setShowAddMore] = useState(false)
+  const [newExperience, setNewExperience] = useState("")
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  // Load saved data and check for resume data
+  useEffect(() => {
+    const savedData = localStorage.getItem("masterProfileV2")
+    if (savedData) {
+      try {
+        const parsed = JSON.parse(savedData)
+        // Handle migration from old format (goal string to goals array)
+        const migratedProfile: ProfileData = {
+          ...defaultProfile,
+          ...parsed,
+          goals: Array.isArray(parsed.goals) ? parsed.goals :
+                 (parsed.goal ? [parsed.goal] : []),
+        }
+        setProfile(migratedProfile)
+        // If they have data, go to ready state
+        if (migratedProfile.bio || migratedProfile.field) {
+          setStage("ready")
+        }
+      } catch (e) {
+        console.error("Error parsing profile data:", e)
+      }
+    }
+
+    // Check if coming from resume upload
+    const source = searchParams.get("source")
+    if (source === "resume") {
+      const resumeData = localStorage.getItem("parsedResumeData")
+      if (resumeData) {
+        try {
+          const parsed = JSON.parse(resumeData)
+          // Pre-fill from resume text
+          if (parsed.rawText) {
+            setProfile((prev) => ({
+              ...prev,
+              bio: extractBioFromResume(parsed.rawText),
+            }))
+            setStage("questions")
+            setCurrentQuestion(1) // Skip to after field selection
+          }
+          localStorage.removeItem("parsedResumeData")
+        } catch (e) {
+          console.error("Error parsing resume data:", e)
+        }
+      }
+    }
+
+    // Mark loading complete
+    setIsLoading(false)
+  }, [searchParams])
+
+  // Silent auto-save
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (profile.field || profile.bio) {
+        localStorage.setItem("masterProfileV2", JSON.stringify(profile))
+      }
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [profile])
+
+  // Focus input when question changes
+  useEffect(() => {
+    if (stage === "questions" && inputRef.current) {
+      inputRef.current.focus()
+    }
+  }, [currentQuestion, stage])
+
+  const extractBioFromResume = (text: string): string => {
+    // Simple extraction - get first meaningful paragraph
+    const lines = text.split("\n").filter((l) => l.trim().length > 20)
+    return lines[0]?.substring(0, 200) || ""
+  }
+
+  const updateProfile = (key: keyof ProfileData, value: string | string[]) => {
+    setProfile((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const handleFieldSelect = (field: string) => {
+    updateProfile("field", field)
+    setTimeout(() => {
+      setCurrentQuestion(1)
+    }, 150)
+  }
+
+  const handleGoalToggle = (goal: string) => {
+    const currentGoals = profile.goals
+    if (currentGoals.includes(goal)) {
+      updateProfile("goals", currentGoals.filter((g) => g !== goal))
+    } else {
+      updateProfile("goals", [...currentGoals, goal])
+    }
+  }
+
+  const handleContinue = () => {
+    if (currentQuestion < 3) {
+      setCurrentQuestion((prev) => prev + 1)
+    } else {
+      setStage("ready")
+    }
+  }
+
+  const handleSkip = () => {
+    handleContinue()
+  }
+
+  const canContinue = () => {
+    switch (currentQuestion) {
+      case 0:
+        return profile.field !== ""
+      case 1:
+        return profile.bio.trim().length > 10
+      case 2:
+        return true // Achievement is optional
+      case 3:
+        return profile.goals.length > 0
+      default:
+        return true
+    }
+  }
+
+  const addExperience = () => {
+    if (newExperience.trim()) {
+      updateProfile("experiences", [...profile.experiences, newExperience.trim()])
+      setNewExperience("")
+    }
+  }
+
+  const removeExperience = (index: number) => {
+    updateProfile(
+      "experiences",
+      profile.experiences.filter((_, i) => i !== index)
+    )
+  }
+
+  // Loading state - prevents hydration mismatch
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
+      </div>
+    )
+  }
+
+  // Start screen
+  if (stage === "start") {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+        <Header />
+        <main className="max-w-xl mx-auto px-4 py-16">
+          <div className="text-center mb-12">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
+              Let&apos;s build your profile
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400">
+              This takes about 2 minutes. You only do it once.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <button
+              onClick={() => {
+                router.push("/dashboard")
+                // Trigger resume upload from dashboard
+                setTimeout(() => {
+                  const input = document.querySelector('input[type="file"]') as HTMLInputElement
+                  input?.click()
+                }, 100)
+              }}
+              className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 text-left hover:border-amber-500 dark:hover:border-amber-500 transition-colors group"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 rounded-xl flex items-center justify-center group-hover:bg-amber-200 dark:group-hover:bg-amber-900/50 transition-colors">
+                  <Upload className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-900 dark:text-white">
+                    Upload my resume
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    We&apos;ll extract your info automatically
+                  </p>
+                </div>
+              </div>
+            </button>
+
+            <button
+              onClick={() => {
+                setStage("questions")
+                setCurrentQuestion(0)
+              }}
+              className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 text-left hover:border-amber-500 dark:hover:border-amber-500 transition-colors group"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center justify-center group-hover:bg-gray-200 dark:group-hover:bg-gray-700 transition-colors">
+                  <MessageSquare className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-900 dark:text-white">
+                    Answer a few questions
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Quick prompts to get started
+                  </p>
+                </div>
+              </div>
+            </button>
+          </div>
+        </main>
+        <BottomNav />
+      </div>
+    )
+  }
+
+  // Questions flow
+  if (stage === "questions") {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+        <Header />
+        <main className="max-w-xl mx-auto px-4 py-12">
+          {/* Question 0: Field */}
+          {currentQuestion === 0 && (
+            <QuestionCard>
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
+                What field are you in?
+              </h2>
+              <div className="flex flex-wrap gap-2 mb-4">
+                {fieldOptions.map((field) => (
+                  <button
+                    key={field}
+                    onClick={() => handleFieldSelect(field)}
+                    className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                      profile.field === field
+                        ? "bg-amber-500 text-gray-900"
+                        : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-amber-500 dark:hover:border-amber-500"
+                    }`}
+                  >
+                    {field}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="text"
+                placeholder="Or type your field..."
+                value={profile.fieldOther}
+                onChange={(e) => {
+                  updateProfile("fieldOther", e.target.value)
+                  updateProfile("field", e.target.value)
+                }}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none"
+              />
+            </QuestionCard>
+          )}
+
+          {/* Question 1: Bio */}
+          {currentQuestion === 1 && (
+            <QuestionCard>
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                Tell us about yourself in a sentence or two
+              </h2>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
+                What you&apos;re working on, studying, or passionate about
+              </p>
+              <textarea
+                ref={inputRef}
+                value={profile.bio}
+                onChange={(e) => updateProfile("bio", e.target.value)}
+                placeholder="e.g., I'm a third-year computer science student focused on making AI more accessible to non-technical users..."
+                rows={4}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none resize-none"
+              />
+              <div className="flex justify-between mt-4">
+                <button
+                  onClick={() => setCurrentQuestion(0)}
+                  className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium py-3 px-4 transition-colors"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  Back
+                </button>
+                <button
+                  onClick={handleContinue}
+                  disabled={!canContinue()}
+                  className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-gray-900 font-semibold py-3 px-6 rounded-xl transition-colors"
+                >
+                  Continue
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            </QuestionCard>
+          )}
+
+          {/* Question 2: Achievement */}
+          {currentQuestion === 2 && (
+            <QuestionCard>
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                What&apos;s something you&apos;ve accomplished?
+              </h2>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
+                A project, award, role, or result you&apos;re proud of
+              </p>
+              <textarea
+                ref={inputRef}
+                value={profile.achievement}
+                onChange={(e) => updateProfile("achievement", e.target.value)}
+                placeholder="e.g., Led a team of 4 to build an app that helped 500+ students find study groups..."
+                rows={4}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none resize-none"
+              />
+              <div className="flex justify-between mt-4">
+                <button
+                  onClick={() => setCurrentQuestion(1)}
+                  className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium py-3 px-4 transition-colors"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  Back
+                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleSkip}
+                    className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium py-3 px-4 transition-colors"
+                  >
+                    Skip
+                  </button>
+                  <button
+                    onClick={handleContinue}
+                    className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-gray-900 font-semibold py-3 px-6 rounded-xl transition-colors"
+                  >
+                    Continue
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </QuestionCard>
+          )}
+
+          {/* Question 3: Goals (Multi-select) */}
+          {currentQuestion === 3 && (
+            <QuestionCard>
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                What are you hoping to achieve?
+              </h2>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
+                Select all that apply
+              </p>
+              <div className="space-y-2 mb-6">
+                {goalOptions.map((goal) => {
+                  const isSelected = profile.goals.includes(goal)
+                  return (
+                    <button
+                      key={goal}
+                      onClick={() => handleGoalToggle(goal)}
+                      className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-left font-medium transition-all ${
+                        isSelected
+                          ? "bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-500 text-gray-900 dark:text-white"
+                          : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-2 border-gray-200 dark:border-gray-700 hover:border-amber-300 dark:hover:border-amber-700"
+                      }`}
+                    >
+                      <span>{goal}</span>
+                      {isSelected && <Check className="w-5 h-5 text-amber-500" />}
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="flex justify-between mt-4">
+                <button
+                  onClick={() => setCurrentQuestion(2)}
+                  className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium py-3 px-4 transition-colors"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  Back
+                </button>
+                <button
+                  onClick={() => setStage("ready")}
+                  disabled={profile.goals.length === 0}
+                  className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-gray-900 font-semibold py-3 px-6 rounded-xl transition-colors"
+                >
+                  Continue
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            </QuestionCard>
+          )}
+        </main>
+        <BottomNav />
+      </div>
+    )
+  }
+
+  // Ready state
+  if (stage === "ready") {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+        <Header />
+        <main className="max-w-xl mx-auto px-4 py-12">
+          {/* Success message */}
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Check className="w-8 h-8 text-green-600 dark:text-green-400" />
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+              You&apos;re ready to apply
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400">
+              Your profile has the basics. You can add more anytime.
+            </p>
+          </div>
+
+          {/* Profile summary */}
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6 mb-6">
+            <div className="space-y-4">
+              {profile.field && (
+                <div>
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                    Field
+                  </span>
+                  <p className="text-gray-900 dark:text-white mt-1">{profile.field}</p>
+                </div>
+              )}
+              {profile.bio && (
+                <div>
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                    About
+                  </span>
+                  <p className="text-gray-900 dark:text-white mt-1">{profile.bio}</p>
+                </div>
+              )}
+              {profile.achievement && (
+                <div>
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                    Achievement
+                  </span>
+                  <p className="text-gray-900 dark:text-white mt-1">{profile.achievement}</p>
+                </div>
+              )}
+              {profile.goals.length > 0 && (
+                <div>
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                    Goals
+                  </span>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {profile.goals.map((goal) => (
+                      <span
+                        key={goal}
+                        className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300"
+                      >
+                        {goal}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="space-y-3">
+            <Link
+              href="/dashboard"
+              className="flex items-center justify-center gap-2 w-full bg-amber-500 hover:bg-amber-600 text-gray-900 font-semibold py-4 px-6 rounded-xl transition-colors"
+            >
+              <Sparkles className="w-5 h-5" />
+              Start applying
+            </Link>
+
+            <button
+              onClick={() => setStage("details")}
+              className="flex items-center justify-center gap-2 w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-300 font-medium py-4 px-6 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            >
+              <Plus className="w-5 h-5" />
+              Add more details
+            </button>
+          </div>
+        </main>
+        <BottomNav />
+      </div>
+    )
+  }
+
+  // Details screen (optional expansion)
+  if (stage === "details") {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+        <Header showBack onBack={() => setStage("ready")} />
+        <main className="max-w-xl mx-auto px-4 py-8 pb-24">
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white mb-6">
+            Add more details
+          </h1>
+
+          {/* Experiences section */}
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6 mb-4">
+            <h3 className="font-medium text-gray-900 dark:text-white mb-4">
+              More achievements or experiences
+            </h3>
+
+            {profile.experiences.length > 0 && (
+              <div className="space-y-2 mb-4">
+                {profile.experiences.map((exp, index) => (
+                  <div
+                    key={index}
+                    className="flex items-start gap-3 bg-gray-50 dark:bg-gray-800 rounded-xl p-3"
+                  >
+                    <span className="text-gray-900 dark:text-white flex-1 text-sm">
+                      {exp}
+                    </span>
+                    <button
+                      onClick={() => removeExperience(index)}
+                      className="text-gray-400 hover:text-red-500 transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newExperience}
+                onChange={(e) => setNewExperience(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") addExperience()
+                }}
+                placeholder="Add an experience..."
+                className="flex-1 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white placeholder:text-gray-400 focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none"
+              />
+              <button
+                onClick={addExperience}
+                disabled={!newExperience.trim()}
+                className="px-4 py-3 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-gray-900 font-medium rounded-xl transition-colors"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+
+          {/* Writing tone */}
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+            <button
+              onClick={() => setShowAddMore(!showAddMore)}
+              className="w-full flex items-center justify-between p-6 text-left"
+            >
+              <div>
+                <h3 className="font-medium text-gray-900 dark:text-white">
+                  Writing style preference
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Current: {toneOptions.find((t) => t.value === profile.tone)?.label}
+                </p>
+              </div>
+              <ChevronDown
+                className={`w-5 h-5 text-gray-400 transition-transform ${
+                  showAddMore ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+
+            {showAddMore && (
+              <div className="px-6 pb-6 border-t border-gray-100 dark:border-gray-800 pt-4">
+                <div className="space-y-2">
+                  {toneOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => updateProfile("tone", option.value)}
+                      className={`w-full flex items-center justify-between p-4 rounded-xl transition-all ${
+                        profile.tone === option.value
+                          ? "bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-500"
+                          : "bg-gray-50 dark:bg-gray-800 border-2 border-transparent hover:border-gray-300 dark:hover:border-gray-600"
+                      }`}
+                    >
+                      <div className="text-left">
+                        <span className="font-medium text-gray-900 dark:text-white">
+                          {option.label}
+                        </span>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          {option.desc}
+                        </p>
+                      </div>
+                      {profile.tone === option.value && (
+                        <Check className="w-5 h-5 text-amber-500" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Done button */}
+          <div className="mt-6">
+            <button
+              onClick={() => setStage("ready")}
+              className="w-full bg-amber-500 hover:bg-amber-600 text-gray-900 font-semibold py-4 px-6 rounded-xl transition-colors"
+            >
+              Done
+            </button>
+          </div>
+        </main>
+        <BottomNav />
+      </div>
+    )
+  }
+
+  return null
+}
+
+// Components
+function Header({ showBack, onBack }: { showBack?: boolean; onBack?: () => void }) {
+  return (
+    <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-40">
+      <div className="max-w-xl mx-auto px-4">
+        <div className="flex items-center justify-between h-16">
+          {showBack ? (
+            <button
+              onClick={onBack}
+              className="flex items-center space-x-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              <span className="text-sm font-medium">Back</span>
+            </button>
+          ) : (
+            <Link
+              href="/dashboard"
+              className="flex items-center space-x-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              <span className="text-sm font-medium">Dashboard</span>
+            </Link>
+          )}
+          <ThemeToggle />
+        </div>
+      </div>
+    </header>
+  )
+}
+
+function QuestionCard({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6 sm:p-8 animate-fadeIn">
+      {children}
+    </div>
+  )
+}
+
+function LoadingFallback() {
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
+      <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
+    </div>
+  )
+}
+
+export default function ProfilePage() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <ProfilePageContent />
+    </Suspense>
+  )
+}
