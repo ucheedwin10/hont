@@ -21,6 +21,9 @@ import {
   ArrowRight,
   CheckCircle,
   AlertCircle,
+  ChevronDown,
+  Clock,
+  Archive,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { ThemeToggle } from "@/components/ui/theme-toggle"
@@ -88,6 +91,27 @@ export default function FeedPage() {
   const [parsedQuestions, setParsedQuestions] = useState<ParsedQuestion[]>([])
   const [userId, setUserId] = useState<string | null>(null)
 
+  // Lazy loading state
+  const [displayCount, setDisplayCount] = useState(12)
+  const [showArchived, setShowArchived] = useState(false)
+
+  // Deadline badge helper
+  const getDeadlineBadge = (deadline: string | null) => {
+    if (!deadline) return null
+    const now = new Date()
+    const deadlineDate = new Date(deadline)
+    const daysUntil = Math.ceil((deadlineDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+
+    if (daysUntil < 0) {
+      return { label: "ARCHIVED", color: "bg-gray-500", textColor: "text-white", isExpired: true }
+    } else if (daysUntil <= 7) {
+      return { label: "CLOSING SOON", color: "bg-red-500", textColor: "text-white", isExpired: false }
+    } else if (daysUntil <= 30) {
+      return { label: "CLOSING THIS MONTH", color: "bg-amber-500", textColor: "text-white", isExpired: false }
+    }
+    return null
+  }
+
   useEffect(() => {
     const fetchOpportunities = async () => {
       const supabase = createClient()
@@ -117,7 +141,8 @@ export default function FeedPage() {
     fetchOpportunities()
   }, [router])
 
-  const filteredOpportunities = useMemo(() => {
+  // Separate active and archived opportunities
+  const { activeOpportunities, archivedOpportunities } = useMemo(() => {
     let filtered = opportunities
 
     // Apply type/tag filter
@@ -143,8 +168,34 @@ export default function FeedPage() {
       )
     }
 
-    return filtered
+    // Separate into active and archived based on deadline
+    const now = new Date()
+    const active: Opportunity[] = []
+    const archived: Opportunity[] = []
+
+    filtered.forEach((opp) => {
+      if (opp.deadline) {
+        const deadlineDate = new Date(opp.deadline)
+        if (deadlineDate < now) {
+          archived.push(opp)
+        } else {
+          active.push(opp)
+        }
+      } else {
+        // No deadline = rolling, treat as active
+        active.push(opp)
+      }
+    })
+
+    return { activeOpportunities: active, archivedOpportunities: archived }
   }, [opportunities, activeFilter, searchQuery])
+
+  // Get paginated active opportunities for display
+  const displayedOpportunities = useMemo(() => {
+    return activeOpportunities.slice(0, displayCount)
+  }, [activeOpportunities, displayCount])
+
+  const hasMoreToLoad = displayCount < activeOpportunities.length
 
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = { all: opportunities.length }
@@ -394,10 +445,75 @@ export default function FeedPage() {
     }
   }
 
+  // Skeleton Card Component
+  const OpportunitySkeleton = () => (
+    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6 animate-pulse">
+      <div className="flex items-start justify-between mb-4">
+        <div className="w-12 h-12 bg-gray-200 dark:bg-gray-700 rounded-xl" />
+        <div className="w-20 h-6 bg-gray-200 dark:bg-gray-700 rounded-full" />
+      </div>
+      <div className="h-5 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-2" />
+      <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2 mb-4" />
+      <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full mb-2" />
+      <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-5/6 mb-4" />
+      <div className="flex gap-2 mb-4">
+        <div className="h-5 w-16 bg-gray-200 dark:bg-gray-700 rounded-full" />
+        <div className="h-5 w-20 bg-gray-200 dark:bg-gray-700 rounded-full" />
+      </div>
+      <div className="h-10 bg-gray-200 dark:bg-gray-700 rounded-xl" />
+    </div>
+  )
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+        {/* Header Skeleton */}
+        <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between h-16">
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 bg-amber-500 rounded-lg animate-pulse" />
+                <div className="w-12 h-5 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+              </div>
+              <div className="hidden md:flex items-center space-x-6">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="w-16 h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                ))}
+              </div>
+              <div className="w-8 h-8 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse" />
+            </div>
+          </div>
+        </header>
+
+        {/* Hero Skeleton */}
+        <section className="bg-gradient-to-br from-amber-500 via-orange-500 to-red-500 py-12 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-7xl mx-auto text-center">
+            <div className="h-10 w-64 bg-white/20 rounded mx-auto mb-3 animate-pulse" />
+            <div className="h-6 w-48 bg-white/20 rounded mx-auto mb-8 animate-pulse" />
+            <div className="max-w-2xl mx-auto h-14 bg-white/90 rounded-2xl animate-pulse" />
+          </div>
+        </section>
+
+        {/* Filter Skeleton */}
+        <section className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 py-4 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-7xl mx-auto flex items-center gap-2 overflow-hidden">
+            {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+              <div key={i} className="h-10 w-24 bg-gray-200 dark:bg-gray-700 rounded-full animate-pulse flex-shrink-0" />
+            ))}
+          </div>
+        </section>
+
+        {/* Grid Skeleton */}
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="h-5 w-48 bg-gray-200 dark:bg-gray-700 rounded mb-6 animate-pulse" />
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <OpportunitySkeleton key={i} />
+            ))}
+          </div>
+        </main>
+
+        <BottomNav />
       </div>
     )
   }
@@ -517,7 +633,12 @@ export default function FeedPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex items-center justify-between">
           <p className="text-gray-600 dark:text-gray-400">
-            Showing <span className="font-semibold text-gray-900 dark:text-white">{filteredOpportunities.length}</span> opportunities
+            Showing <span className="font-semibold text-gray-900 dark:text-white">{activeOpportunities.length}</span> active opportunities
+            {archivedOpportunities.length > 0 && (
+              <span className="text-gray-400 dark:text-gray-500">
+                {" "}({archivedOpportunities.length} archived)
+              </span>
+            )}
             {searchQuery && (
               <span>
                 {" "}for &quot;<span className="font-medium">{searchQuery}</span>&quot;
@@ -529,7 +650,7 @@ export default function FeedPage() {
 
       {/* Opportunities Grid */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-24 md:pb-12">
-        {filteredOpportunities.length === 0 ? (
+        {activeOpportunities.length === 0 && archivedOpportunities.length === 0 ? (
           <div className="text-center py-16">
             <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
               <Search className="w-8 h-8 text-gray-400" />
@@ -549,86 +670,195 @@ export default function FeedPage() {
             </button>
           </div>
         ) : (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredOpportunities.map((opp) => (
-              <div
-                key={opp.id}
-                className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6 hover:border-gray-300 dark:hover:border-gray-700 hover:shadow-lg transition-all group"
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="w-12 h-12 bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-900/30 dark:to-orange-900/30 rounded-xl flex items-center justify-center">
-                    <GraduationCap className="w-6 h-6 text-amber-600 dark:text-amber-400" />
-                  </div>
-                  <span
-                    className={`text-xs font-medium px-2.5 py-1 rounded-full capitalize ${getTypeBadgeColor(
-                      opp.type
-                    )}`}
-                  >
-                    {opp.type || "Other"}
-                  </span>
-                </div>
+          <>
+            {/* Active Opportunities Grid */}
+            {activeOpportunities.length > 0 ? (
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {displayedOpportunities.map((opp) => {
+                  const deadlineBadge = getDeadlineBadge(opp.deadline)
+                  return (
+                    <div
+                      key={opp.id}
+                      className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6 hover:border-gray-300 dark:hover:border-gray-700 hover:shadow-lg transition-all group relative"
+                    >
+                      {/* Deadline Badge */}
+                      {deadlineBadge && !deadlineBadge.isExpired && (
+                        <div className={`absolute -top-2 -right-2 ${deadlineBadge.color} ${deadlineBadge.textColor} text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 shadow-lg`}>
+                          <Clock className="w-3 h-3" />
+                          {deadlineBadge.label}
+                        </div>
+                      )}
 
-                <h3 className="font-semibold text-gray-900 dark:text-white mb-1 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors line-clamp-2">
-                  {opp.title}
-                </h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">{opp.organization}</p>
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="w-12 h-12 bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-900/30 dark:to-orange-900/30 rounded-xl flex items-center justify-center">
+                          <GraduationCap className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+                        </div>
+                        <span
+                          className={`text-xs font-medium px-2.5 py-1 rounded-full capitalize ${getTypeBadgeColor(
+                            opp.type
+                          )}`}
+                        >
+                          {opp.type || "Other"}
+                        </span>
+                      </div>
 
-                {opp.description && (
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-2">
-                    {opp.description}
-                  </p>
-                )}
+                      <h3 className="font-semibold text-gray-900 dark:text-white mb-1 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors line-clamp-2">
+                        {opp.title}
+                      </h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">{opp.organization}</p>
 
-                {/* Tags */}
-                {opp.tags && opp.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mb-4">
-                    {opp.tags.slice(0, 3).map((tag) => (
-                      <span
-                        key={tag}
-                        className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400"
+                      {opp.description && (
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-2">
+                          {opp.description}
+                        </p>
+                      )}
+
+                      {/* Tags */}
+                      {opp.tags && opp.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mb-4">
+                          {opp.tags.slice(0, 3).map((tag) => (
+                            <span
+                              key={tag}
+                              className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400"
+                            >
+                              {tag.replace(/_/g, " ")}
+                            </span>
+                          ))}
+                          {opp.tags.length > 3 && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+                              +{opp.tags.length - 3}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400 mb-4">
+                        <span className={`flex items-center gap-1 ${getDeadlineColor(opp.deadline)}`}>
+                          <Calendar className="w-3.5 h-3.5" />
+                          {formatDeadline(opp.deadline)}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <FileText className="w-3.5 h-3.5" />
+                          {opp.questions?.length || 0} questions
+                        </span>
+                      </div>
+
+                      <button
+                        onClick={() => handleStartApplication(opp.id)}
+                        disabled={startingApplication === opp.id}
+                        className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 text-white font-semibold py-2.5 px-4 rounded-xl transition-all text-sm flex items-center justify-center gap-2"
                       >
-                        {tag.replace(/_/g, " ")}
-                      </span>
-                    ))}
-                    {opp.tags.length > 3 && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
-                        +{opp.tags.length - 3}
-                      </span>
-                    )}
-                  </div>
-                )}
+                        {startingApplication === opp.id ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Starting...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-4 h-4" />
+                            Generate Application
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-8 mb-8">
+                <p className="text-gray-500 dark:text-gray-400">No active opportunities match your filters</p>
+              </div>
+            )}
 
-                <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400 mb-4">
-                  <span className={`flex items-center gap-1 ${getDeadlineColor(opp.deadline)}`}>
-                    <Calendar className="w-3.5 h-3.5" />
-                    {formatDeadline(opp.deadline)}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <FileText className="w-3.5 h-3.5" />
-                    {opp.questions?.length || 0} questions
-                  </span>
-                </div>
-
+            {/* Load More Button */}
+            {hasMoreToLoad && (
+              <div className="text-center mt-8">
                 <button
-                  onClick={() => handleStartApplication(opp.id)}
-                  disabled={startingApplication === opp.id}
-                  className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 text-white font-semibold py-2.5 px-4 rounded-xl transition-all text-sm flex items-center justify-center gap-2"
+                  onClick={() => setDisplayCount((prev) => prev + 12)}
+                  className="inline-flex items-center gap-2 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 font-medium px-6 py-3 rounded-xl border border-gray-200 dark:border-gray-700 transition-all"
                 >
-                  {startingApplication === opp.id ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Starting...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4" />
-                      Generate Application
-                    </>
-                  )}
+                  <ChevronDown className="w-5 h-5" />
+                  Load More ({activeOpportunities.length - displayCount} remaining)
                 </button>
               </div>
-            ))}
-          </div>
+            )}
+
+            {/* Archived Opportunities Section */}
+            {archivedOpportunities.length > 0 && (
+              <div className="mt-12 pt-8 border-t border-gray-200 dark:border-gray-800">
+                <button
+                  onClick={() => setShowArchived(!showArchived)}
+                  className="flex items-center gap-3 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors mb-6"
+                >
+                  <Archive className="w-5 h-5" />
+                  <span className="font-medium">
+                    Archived Opportunities ({archivedOpportunities.length})
+                  </span>
+                  <ChevronDown className={`w-5 h-5 transition-transform ${showArchived ? "rotate-180" : ""}`} />
+                </button>
+
+                {showArchived && (
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 opacity-75">
+                    {archivedOpportunities.map((opp) => (
+                      <div
+                        key={opp.id}
+                        className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6 relative"
+                      >
+                        {/* Archived Badge */}
+                        <div className="absolute -top-2 -right-2 bg-gray-500 text-white text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 shadow-lg">
+                          <Archive className="w-3 h-3" />
+                          ARCHIVED
+                        </div>
+
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center justify-center">
+                            <GraduationCap className="w-6 h-6 text-gray-400" />
+                          </div>
+                          <span className="text-xs font-medium px-2.5 py-1 rounded-full capitalize bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                            {opp.type || "Other"}
+                          </span>
+                        </div>
+
+                        <h3 className="font-semibold text-gray-600 dark:text-gray-400 mb-1 line-clamp-2">
+                          {opp.title}
+                        </h3>
+                        <p className="text-sm text-gray-400 dark:text-gray-500 mb-2">{opp.organization}</p>
+
+                        <div className="flex items-center gap-4 text-xs text-gray-400 dark:text-gray-500 mb-4">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3.5 h-3.5" />
+                            Expired {formatDeadline(opp.deadline)}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <FileText className="w-3.5 h-3.5" />
+                            {opp.questions?.length || 0} questions
+                          </span>
+                        </div>
+
+                        <button
+                          onClick={() => handleStartApplication(opp.id)}
+                          disabled={startingApplication === opp.id}
+                          className="w-full bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 disabled:opacity-50 text-gray-600 dark:text-gray-400 font-medium py-2.5 px-4 rounded-xl transition-all text-sm flex items-center justify-center gap-2"
+                        >
+                          {startingApplication === opp.id ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Starting...
+                            </>
+                          ) : (
+                            <>
+                              <FileText className="w-4 h-4" />
+                              View Application
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
       </main>
 
