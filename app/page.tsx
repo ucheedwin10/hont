@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
-import { GraduationCap, Sparkles, Clock, FileCheck, Plus, ChevronRight } from "lucide-react"
+import { GraduationCap, Sparkles, Clock, FileCheck, Plus, ChevronRight, Zap, Calendar, Target } from "lucide-react"
 import { ThemeToggle } from "@/components/ui/theme-toggle"
 import { BottomNav } from "@/components/ui/bottom-nav"
 
@@ -278,64 +278,98 @@ export default function LandingPage() {
         </div>
       </motion.section>
 
-      {/* Stats Section */}
+      {/* Why Hont Works Section */}
       <motion.section
         className="py-20 px-4 sm:px-6 lg:px-8"
         {...fadeInUp}
       >
         <div className="max-w-6xl mx-auto">
-          <motion.div
-            className="bg-gradient-to-r from-gray-900 to-black rounded-3xl p-12 text-center overflow-hidden relative"
-            whileHover={{ scale: 1.01 }}
-            transition={{ type: "spring", stiffness: 200 }}
-          >
-            {/* Decorative gradient orbs */}
-            <div className="absolute top-0 left-1/4 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl" />
-            <div className="absolute bottom-0 right-1/4 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl" />
+          <div className="text-center mb-12">
+            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-4">
+              Why Hont Works
+            </h2>
+            <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+              Stop leaving opportunities on the table. Apply to everything that fits.
+            </p>
+          </div>
 
+          <motion.div
+            className="grid md:grid-cols-3 gap-6"
+            variants={staggerContainer}
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true }}
+          >
+            {/* Card 1: Time Savings */}
             <motion.div
-              className="grid md:grid-cols-3 gap-8 relative z-10"
-              variants={staggerContainer}
-              initial="hidden"
-              whileInView="show"
-              viewport={{ once: true }}
+              variants={staggerItem}
+              className="bg-gray-800 dark:bg-gray-800 rounded-xl p-8 border border-gray-700 hover:bg-gray-700 dark:hover:bg-gray-700 transition-all group"
+              whileHover={{ y: -5 }}
             >
-              <motion.div variants={staggerItem}>
-                <motion.div
-                  className="text-4xl sm:text-5xl font-bold text-amber-400 mb-2"
-                  initial={{ scale: 0.5 }}
-                  whileInView={{ scale: 1 }}
-                  viewport={{ once: true }}
-                  transition={{ type: "spring", stiffness: 200, delay: 0.1 }}
-                >
-                  10x
-                </motion.div>
-                <div className="text-gray-400">Faster Applications</div>
+              <motion.div
+                className="w-14 h-14 bg-amber-500/20 rounded-xl flex items-center justify-center mb-6"
+                whileHover={{ rotate: 5, scale: 1.1 }}
+                transition={{ type: "spring", stiffness: 300 }}
+              >
+                <Zap className="w-7 h-7 text-amber-400" />
               </motion.div>
-              <motion.div variants={staggerItem}>
-                <motion.div
-                  className="text-4xl sm:text-5xl font-bold text-amber-400 mb-2"
-                  initial={{ scale: 0.5 }}
-                  whileInView={{ scale: 1 }}
-                  viewport={{ once: true }}
-                  transition={{ type: "spring", stiffness: 200, delay: 0.2 }}
-                >
-                  $2M+
-                </motion.div>
-                <div className="text-gray-400">Scholarships Awarded</div>
+              <h3 className="text-2xl font-bold text-white mb-2">
+                90% Faster Applications
+              </h3>
+              <p className="text-orange-500 text-lg font-medium mb-4">
+                From Hours to Minutes
+              </p>
+              <p className="text-gray-400 text-base leading-relaxed">
+                What used to take 3-4 hours now takes 10 minutes. Our AI handles the heavy lifting—extracting your profile, writing tailored essays, and respecting word limits—so you can apply to more opportunities in less time.
+              </p>
+            </motion.div>
+
+            {/* Card 2: Deadline Management */}
+            <motion.div
+              variants={staggerItem}
+              className="bg-gray-800 dark:bg-gray-800 rounded-xl p-8 border border-gray-700 hover:bg-gray-700 dark:hover:bg-gray-700 transition-all group"
+              whileHover={{ y: -5 }}
+            >
+              <motion.div
+                className="w-14 h-14 bg-amber-500/20 rounded-xl flex items-center justify-center mb-6"
+                whileHover={{ rotate: 5, scale: 1.1 }}
+                transition={{ type: "spring", stiffness: 300 }}
+              >
+                <Calendar className="w-7 h-7 text-amber-400" />
               </motion.div>
-              <motion.div variants={staggerItem}>
-                <motion.div
-                  className="text-4xl sm:text-5xl font-bold text-amber-400 mb-2"
-                  initial={{ scale: 0.5 }}
-                  whileInView={{ scale: 1 }}
-                  viewport={{ once: true }}
-                  transition={{ type: "spring", stiffness: 200, delay: 0.3 }}
-                >
-                  5,000+
-                </motion.div>
-                <div className="text-gray-400">Happy Users</div>
+              <h3 className="text-2xl font-bold text-white mb-2">
+                Never Miss a Deadline
+              </h3>
+              <p className="text-orange-500 text-lg font-medium mb-4">
+                AI-Powered Application Assistant
+              </p>
+              <p className="text-gray-400 text-base leading-relaxed">
+                Hont writes your applications instantly, so you&apos;re never scrambling at the last minute. Track deadlines with smart badges, get notified when opportunities are closing soon, and submit with confidence.
+              </p>
+            </motion.div>
+
+            {/* Card 3: Opportunity Maximization */}
+            <motion.div
+              variants={staggerItem}
+              className="bg-gray-800 dark:bg-gray-800 rounded-xl p-8 border border-gray-700 hover:bg-gray-700 dark:hover:bg-gray-700 transition-all group"
+              whileHover={{ y: -5 }}
+            >
+              <motion.div
+                className="w-14 h-14 bg-amber-500/20 rounded-xl flex items-center justify-center mb-6"
+                whileHover={{ rotate: 5, scale: 1.1 }}
+                transition={{ type: "spring", stiffness: 300 }}
+              >
+                <Target className="w-7 h-7 text-amber-400" />
               </motion.div>
+              <h3 className="text-2xl font-bold text-white mb-2">
+                You Miss 100% of Shots You Don&apos;t Take
+              </h3>
+              <p className="text-orange-500 text-lg font-medium mb-4">
+                Apply to Everything That Fits
+              </p>
+              <p className="text-gray-400 text-base leading-relaxed">
+                Most people skip opportunities because applications are exhausting. With Hont, there&apos;s no excuse. Apply to 10, 20, or 50 scholarships—each one takes minutes, and each one is a chance to win.
+              </p>
             </motion.div>
           </motion.div>
         </div>
@@ -415,7 +449,7 @@ export default function LandingPage() {
             Ready to transform your application journey?
           </h2>
           <p className="text-lg text-gray-600 dark:text-gray-400 mb-8">
-            Join thousands of students and professionals who are securing opportunities faster than ever.
+            Build your profile once. Apply to dozens of opportunities in minutes. Your future is waiting.
           </p>
           <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.98 }}>
             <Link
