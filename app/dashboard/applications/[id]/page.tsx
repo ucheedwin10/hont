@@ -24,6 +24,7 @@ import {
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { ThemeToggle } from "@/components/ui/theme-toggle"
+import { saveAnswer, loadAnswers } from "@/lib/saveAnswer"
 
 interface Question {
   id: string
@@ -101,6 +102,9 @@ export default function ApplicationPage() {
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [generatingAll, setGeneratingAll] = useState(false)
   const [generationProgress, setGenerationProgress] = useState({ current: 0, total: 0 })
+  const [savingAnswer, setSavingAnswer] = useState<Record<string, boolean>>({})
+  const [answerSaveStatus, setAnswerSaveStatus] = useState<Record<string, { saved: boolean; savedAt: string | null }>>({})
+  const [answerLastSaved, setAnswerLastSaved] = useState<Record<string, string>>({})
 
   // State for adding questions
   const [showAddQuestions, setShowAddQuestions] = useState(false)
@@ -170,12 +174,34 @@ export default function ApplicationPage() {
       setApplication(applicationData)
       setProfile(profileData as ProfileData)
 
-      // Initialize answers from saved data
-      const savedAnswers: Record<string, string> = {}
-      for (const answer of applicationData.answers) {
-        savedAnswers[answer.question_id] = answer.text
+      // Load answers from user_application_answers table (new persistence layer)
+      const { success: loadSuccess, answers: savedAnswersList } = await loadAnswers({
+        applicationId: applicationData.id
+      })
+
+      if (loadSuccess && savedAnswersList.length > 0) {
+        // Use answers from the new table
+        const loadedAnswers: Record<string, string> = {}
+        const loadedSaveStatus: Record<string, { saved: boolean; savedAt: string | null }> = {}
+        const loadedLastSaved: Record<string, string> = {}
+
+        for (const savedAnswer of savedAnswersList) {
+          loadedAnswers[savedAnswer.question_id] = savedAnswer.answer
+          loadedSaveStatus[savedAnswer.question_id] = { saved: true, savedAt: savedAnswer.updated_at }
+          loadedLastSaved[savedAnswer.question_id] = savedAnswer.updated_at
+        }
+
+        setAnswers(loadedAnswers)
+        setAnswerSaveStatus(loadedSaveStatus)
+        setAnswerLastSaved(loadedLastSaved)
+      } else {
+        // Fallback: Initialize answers from legacy JSONB data if new table is empty
+        const savedAnswers: Record<string, string> = {}
+        for (const answer of applicationData.answers) {
+          savedAnswers[answer.question_id] = answer.text
+        }
+        setAnswers(savedAnswers)
       }
-      setAnswers(savedAnswers)
 
       // If no questions, show the add questions UI
       if (!opportunity.questions || opportunity.questions.length === 0) {
@@ -209,7 +235,7 @@ export default function ApplicationPage() {
     totalQuestions?: number,
     previousAnswerSummaries?: string[]
   ) => {
-    if (!profile) return
+    if (!profile || !application) return
 
     setGenerating((prev) => ({ ...prev, [questionId]: true }))
 
@@ -245,7 +271,35 @@ export default function ApplicationPage() {
         throw new Error(result.error || "Failed to generate answer")
       }
 
+      // Update local state with generated answer
       setAnswers((prev) => ({ ...prev, [questionId]: result.answer }))
+
+      // Auto-save the generated answer to database
+      setSavingAnswer((prev) => ({ ...prev, [questionId]: true }))
+      const saveResult = await saveAnswer({
+        applicationId: application.id,
+        questionId,
+        answer: result.answer,
+      })
+
+      if (saveResult.success) {
+        setAnswerSaveStatus((prev) => ({
+          ...prev,
+          [questionId]: { saved: true, savedAt: saveResult.savedAt || null }
+        }))
+        setAnswerLastSaved((prev) => ({
+          ...prev,
+          [questionId]: saveResult.savedAt || new Date().toISOString()
+        }))
+      } else {
+        console.error("Failed to save answer:", saveResult.error)
+        setAnswerSaveStatus((prev) => ({
+          ...prev,
+          [questionId]: { saved: false, savedAt: null }
+        }))
+      }
+      setSavingAnswer((prev) => ({ ...prev, [questionId]: false }))
+
       return result.answer // Return for use in handleGenerateAll
     } catch (err) {
       console.error("Error generating answer:", err)
@@ -305,7 +359,7 @@ export default function ApplicationPage() {
 
   const handleTrimAnswer = async (questionId: string, wordLimit: number) => {
     const currentAnswer = answers[questionId]
-    if (!currentAnswer) return
+    if (!currentAnswer || !application) return
 
     setTrimming((prev) => ({ ...prev, [questionId]: true }))
 
@@ -326,6 +380,26 @@ export default function ApplicationPage() {
       }
 
       setAnswers((prev) => ({ ...prev, [questionId]: result.answer }))
+
+      // Auto-save the trimmed answer
+      setSavingAnswer((prev) => ({ ...prev, [questionId]: true }))
+      const saveResult = await saveAnswer({
+        applicationId: application.id,
+        questionId,
+        answer: result.answer,
+      })
+
+      if (saveResult.success) {
+        setAnswerSaveStatus((prev) => ({
+          ...prev,
+          [questionId]: { saved: true, savedAt: saveResult.savedAt || null }
+        }))
+        setAnswerLastSaved((prev) => ({
+          ...prev,
+          [questionId]: saveResult.savedAt || new Date().toISOString()
+        }))
+      }
+      setSavingAnswer((prev) => ({ ...prev, [questionId]: false }))
     } catch (err) {
       console.error("Error trimming answer:", err)
     } finally {
@@ -391,23 +465,53 @@ export default function ApplicationPage() {
         return
       }
 
-      // Convert answers to array format
+      // Save each answer to the new user_application_answers table
+      const savePromises = Object.entries(answers).map(async ([questionId, text]) => {
+        if (!text || text.trim().length === 0) return null
+        return saveAnswer({
+          applicationId: application.id,
+          questionId,
+          answer: text,
+        })
+      })
+
+      const results = await Promise.all(savePromises)
+      const allSuccessful = results.every(r => r === null || r?.success)
+
+      if (!allSuccessful) {
+        throw new Error("Some answers failed to save")
+      }
+
+      // Update save status for all answers
+      const newSaveStatus: Record<string, { saved: boolean; savedAt: string | null }> = {}
+      const newLastSaved: Record<string, string> = {}
+      const now = new Date().toISOString()
+
+      for (const questionId of Object.keys(answers)) {
+        if (answers[questionId] && answers[questionId].trim().length > 0) {
+          newSaveStatus[questionId] = { saved: true, savedAt: now }
+          newLastSaved[questionId] = now
+        }
+      }
+
+      setAnswerSaveStatus(prev => ({ ...prev, ...newSaveStatus }))
+      setAnswerLastSaved(prev => ({ ...prev, ...newLastSaved }))
+
+      // Also update the legacy JSONB column for backwards compatibility
       const answersArray: Answer[] = Object.entries(answers).map(([question_id, text]) => ({
         question_id,
         text,
         generated: true,
       }))
 
-      const { error } = await supabase
+      await supabase
         .from("user_applications")
         .update({
           answers: answersArray,
-          updated_at: new Date().toISOString(),
+          updated_at: now,
         })
         .eq("id", application.id)
         .eq("user_id", user.id)
-
-      if (error) throw error
 
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 3000)
@@ -608,6 +712,21 @@ export default function ApplicationPage() {
       day: "numeric",
       year: "numeric",
     })
+  }
+
+  const formatRelativeTime = (dateString: string | null) => {
+    if (!dateString) return null
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+    const diffDays = Math.floor(diffMs / 86400000)
+
+    if (diffMins < 1) return "just now"
+    if (diffMins < 60) return `${diffMins} min${diffMins === 1 ? '' : 's'} ago`
+    if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`
+    return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`
   }
 
   if (loading) {
@@ -1047,6 +1166,18 @@ export default function ApplicationPage() {
                             )}
                           </span>
                         )}
+                        {/* Save status indicator */}
+                        {savingAnswer[question.id] ? (
+                          <span className="flex items-center gap-1 text-sm text-blue-500">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            Saving...
+                          </span>
+                        ) : answerSaveStatus[question.id]?.saved ? (
+                          <span className="flex items-center gap-1 text-sm text-green-600 dark:text-green-400">
+                            <CheckCircle className="w-3 h-3" />
+                            Saved {formatRelativeTime(answerLastSaved[question.id])}
+                          </span>
+                        ) : null}
                       </div>
 
                       {isOverLimit && (
