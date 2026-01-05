@@ -44,6 +44,12 @@ interface Opportunity {
     required: boolean
   }> | null
   is_public: boolean
+  // Qualification tags
+  education_level: string | null
+  work_experience: string | null
+  geographic_eligibility: string | null
+  field_of_study: string | null
+  funding_amount: string | null
 }
 
 interface ExtractedOpportunity {
@@ -134,7 +140,7 @@ export default function FeedPage() {
 
       const { data: opps } = await supabase
         .from("opportunities")
-        .select("id, title, organization, type, deadline, description, tags, questions, is_public")
+        .select("id, title, organization, type, deadline, description, tags, questions, is_public, education_level, work_experience, geographic_eligibility, field_of_study, funding_amount")
         .eq("is_public", true)
         .eq("status", "active")
         .order("deadline", { ascending: true, nullsFirst: false })
@@ -721,9 +727,40 @@ export default function FeedPage() {
                         </p>
                       )}
 
-                      {/* Tags */}
+                      {/* Qualification Tags */}
+                      {(opp.education_level || opp.geographic_eligibility || opp.funding_amount || opp.field_of_study) && (
+                        <div className="flex flex-wrap gap-1.5 mb-3">
+                          {opp.funding_amount && (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
+                              {opp.funding_amount}
+                            </span>
+                          )}
+                          {opp.education_level && (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                              {opp.education_level}
+                            </span>
+                          )}
+                          {opp.geographic_eligibility && (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                              {opp.geographic_eligibility}
+                            </span>
+                          )}
+                          {opp.field_of_study && opp.field_of_study !== "Any Field" && (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                              {opp.field_of_study}
+                            </span>
+                          )}
+                          {opp.work_experience && opp.work_experience !== "No Experience" && (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                              {opp.work_experience}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Legacy Tags */}
                       {opp.tags && opp.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mb-4">
+                        <div className="flex flex-wrap gap-1 mb-3">
                           {opp.tags.slice(0, 3).map((tag) => (
                             <span
                               key={tag}
