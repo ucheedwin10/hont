@@ -61,6 +61,7 @@ export default function DashboardPage() {
   const [opportunityText, setOpportunityText] = useState("")
   const [parsingOpportunity, setParsingOpportunity] = useState(false)
   const [startingApplication, setStartingApplication] = useState<string | null>(null)
+  const [stats, setStats] = useState({ total: 0, thisMonth: 0, hoursSaved: "0" })
 
   useEffect(() => {
     const getUser = async () => {
@@ -96,53 +97,43 @@ export default function DashboardPage() {
 
       setProfileData(profile as ProfileData)
 
-      // Fetch diverse public opportunities (random selection for variety)
-      // Using a raw query to get random results with type diversity
+      // Fetch opportunities same as Feed page - sorted by deadline (soonest first)
+      const now = new Date()
       const { data: opps } = await supabase
         .from("opportunities")
         .select("id, title, organization, type, deadline, description, questions, is_public")
         .eq("is_public", true)
         .eq("status", "active")
-        .limit(20) // Fetch more, then shuffle client-side for diversity
+        .order("deadline", { ascending: true, nullsFirst: false })
 
       if (opps && opps.length > 0) {
-        // Shuffle and pick 6 diverse opportunities
-        const shuffled = [...opps].sort(() => Math.random() - 0.5)
-
-        // Try to get variety by type
-        const byType: Record<string, typeof opps> = {}
-        shuffled.forEach(opp => {
-          const type = opp.type || 'other'
-          if (!byType[type]) byType[type] = []
-          byType[type].push(opp)
+        // Filter out expired opportunities and take first 6 active ones
+        const activeOpps = opps.filter(opp => {
+          if (!opp.deadline) return true // No deadline = rolling, include
+          return new Date(opp.deadline) >= now
         })
-
-        // Pick from each type to ensure diversity
-        const diverse: typeof opps = []
-        const types = Object.keys(byType)
-        let typeIndex = 0
-
-        while (diverse.length < 6 && shuffled.length > 0) {
-          const type = types[typeIndex % types.length]
-          if (byType[type] && byType[type].length > 0) {
-            diverse.push(byType[type].shift()!)
-          }
-          typeIndex++
-          // Break if we've gone through all types and nothing left
-          if (types.every(t => !byType[t] || byType[t].length === 0)) {
-            break
-          }
-        }
-
-        // If still need more, add from shuffled
-        while (diverse.length < 6 && shuffled.length > 0) {
-          const next = shuffled.find(o => !diverse.includes(o))
-          if (next) diverse.push(next)
-          else break
-        }
-
-        setOpportunities(diverse as Opportunity[])
+        setOpportunities(activeOpps.slice(0, 6) as Opportunity[])
       }
+
+      // Fetch application stats
+      const { count: totalCount } = await supabase
+        .from("user_applications")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id)
+
+      // Get start of current month
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+      const { count: monthCount } = await supabase
+        .from("user_applications")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .gte("created_at", startOfMonth)
+
+      const total = totalCount || 0
+      const thisMonth = monthCount || 0
+      const hoursSaved = (total * 3.5).toFixed(1)
+
+      setStats({ total, thisMonth, hoursSaved })
 
       setLoading(false)
     }
@@ -304,10 +295,27 @@ export default function DashboardPage() {
     day: "numeric",
   })
 
-  const stats = [
-    { label: "Total Applications", value: "0", icon: FileText, color: "bg-blue-500" },
-    { label: "This Month", value: "0", icon: Calendar, color: "bg-green-500" },
-    { label: "Hours Saved", value: "0", icon: Clock, color: "bg-purple-500" },
+  // Deadline badge helper - same as Feed page
+  const getDeadlineBadge = (deadline: string | null) => {
+    if (!deadline) return null
+    const now = new Date()
+    const deadlineDate = new Date(deadline)
+    const daysUntil = Math.ceil((deadlineDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+
+    if (daysUntil < 0) {
+      return { label: "ARCHIVED", color: "bg-gray-500", textColor: "text-white", isExpired: true }
+    } else if (daysUntil <= 7) {
+      return { label: "CLOSING SOON", color: "bg-red-500", textColor: "text-white", isExpired: false }
+    } else if (daysUntil <= 30) {
+      return { label: "CLOSING THIS MONTH", color: "bg-amber-500", textColor: "text-white", isExpired: false }
+    }
+    return null
+  }
+
+  const statsCards = [
+    { label: "Total Applications", value: stats.total.toString(), icon: FileText, color: "bg-blue-500" },
+    { label: "This Month", value: stats.thisMonth.toString(), icon: Calendar, color: "bg-green-500" },
+    { label: "Hours Saved", value: stats.hoursSaved, icon: Clock, color: "bg-purple-500" },
   ]
 
   const getTypeBadgeColor = (type: string | null) => {
@@ -515,53 +523,63 @@ export default function DashboardPage() {
             </div>
 
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {opportunities.map((opp) => (
-                <div key={opp.id} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6 hover:border-gray-300 dark:hover:border-gray-700 hover:shadow-lg transition-all group">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="w-12 h-12 bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-900/30 dark:to-orange-900/30 rounded-xl flex items-center justify-center">
-                      <GraduationCap className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+              {opportunities.map((opp) => {
+                const deadlineBadge = getDeadlineBadge(opp.deadline)
+                return (
+                  <div key={opp.id} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6 hover:border-gray-300 dark:hover:border-gray-700 hover:shadow-lg transition-all group">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="w-12 h-12 bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-900/30 dark:to-orange-900/30 rounded-xl flex items-center justify-center">
+                        <GraduationCap className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        {deadlineBadge && (
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${deadlineBadge.color} ${deadlineBadge.textColor}`}>
+                            {deadlineBadge.label}
+                          </span>
+                        )}
+                        <span className={`text-xs font-medium px-2.5 py-1 rounded-full capitalize ${getTypeBadgeColor(opp.type)}`}>
+                          {opp.type || "Other"}
+                        </span>
+                      </div>
                     </div>
-                    <span className={`text-xs font-medium px-2.5 py-1 rounded-full capitalize ${getTypeBadgeColor(opp.type)}`}>
-                      {opp.type || "Other"}
-                    </span>
+
+                    <h3 className="font-semibold text-gray-900 dark:text-white mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                      {opp.title}
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">{opp.organization}</p>
+
+                    <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400 mb-4">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5" />
+                        {formatDeadline(opp.deadline)}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <FileText className="w-3.5 h-3.5" />
+                        {opp.questions?.length || 0} questions
+                      </span>
+                    </div>
+
+                    <button
+                      onClick={() => handleStartApplication(opp.id)}
+                      disabled={startingApplication === opp.id}
+                      className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 text-white font-semibold py-2.5 px-4 rounded-xl transition-all text-sm flex items-center justify-center gap-2"
+                    >
+                      {startingApplication === opp.id ? (
+                        <><Loader2 className="w-4 h-4 animate-spin" />Starting...</>
+                      ) : (
+                        <><Sparkles className="w-4 h-4" />Generate Application</>
+                      )}
+                    </button>
                   </div>
-
-                  <h3 className="font-semibold text-gray-900 dark:text-white mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                    {opp.title}
-                  </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">{opp.organization}</p>
-
-                  <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400 mb-4">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="w-3.5 h-3.5" />
-                      {formatDeadline(opp.deadline)}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <FileText className="w-3.5 h-3.5" />
-                      {opp.questions?.length || 0} questions
-                    </span>
-                  </div>
-
-                  <button
-                    onClick={() => handleStartApplication(opp.id)}
-                    disabled={startingApplication === opp.id}
-                    className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 text-white font-semibold py-2.5 px-4 rounded-xl transition-all text-sm flex items-center justify-center gap-2"
-                  >
-                    {startingApplication === opp.id ? (
-                      <><Loader2 className="w-4 h-4 animate-spin" />Starting...</>
-                    ) : (
-                      <><Sparkles className="w-4 h-4" />Generate Application</>
-                    )}
-                  </button>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-          {stats.map((stat) => {
+          {statsCards.map((stat) => {
             const Icon = stat.icon
             return (
               <div key={stat.label} className="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800 shadow-sm">
