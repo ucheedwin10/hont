@@ -40,11 +40,19 @@ export default function ApplicationsPage() {
   useEffect(() => {
     const fetchApplications = async () => {
       const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
+
+      // Try getSession first (uses cached session), fallback to getUser
+      const { data: { session } } = await supabase.auth.getSession()
+      let user = session?.user
 
       if (!user) {
-        router.push("/auth/signin")
-        return
+        // Double-check with getUser before redirecting
+        const { data: { user: verifiedUser } } = await supabase.auth.getUser()
+        if (!verifiedUser) {
+          router.push("/auth/signin")
+          return
+        }
+        user = verifiedUser
       }
 
       const { data: apps } = await supabase
