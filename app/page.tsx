@@ -2,10 +2,24 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
-import { GraduationCap, Sparkles, Clock, FileCheck, Plus, ChevronRight, Zap, Calendar, Target } from "lucide-react"
+import { GraduationCap, Sparkles, Clock, FileCheck, Plus, ChevronRight, Zap, Calendar, Target, Loader2, ArrowRight } from "lucide-react"
 import { ThemeToggle } from "@/components/ui/theme-toggle"
 import { BottomNav } from "@/components/ui/bottom-nav"
+import { createClient } from "@/lib/supabase/client"
+
+interface TrendingOpportunity {
+  id: string
+  title: string
+  organization: string | null
+  description: string | null
+  deadline: string | null
+  education_level: string | null
+  work_experience: string | null
+  geographic_eligibility: string | null
+  field_of_study: string | null
+}
 
 // Animation variants
 const fadeInUp = {
@@ -65,13 +79,72 @@ const opportunities = [
   "fellowship"
 ]
 
+// Trending opportunity titles to fetch
+const TRENDING_TITLES = [
+  "Tarbell Fellowship Program 2026",
+  "Oxford Institute for Ethics in AI Accelerator Fellowship",
+  "Tony Elumelu Foundation Entrepreneurship Programme"
+]
+
+// Badge config for each trending opportunity
+const TRENDING_BADGES: Record<string, { emoji: string; label: string; color: string }> = {
+  "Tarbell Fellowship Program 2026": {
+    emoji: "⭐",
+    label: "Most Completed",
+    color: "bg-green-500"
+  },
+  "Oxford Institute for Ethics in AI Accelerator Fellowship": {
+    emoji: "🔥",
+    label: "Most Popular",
+    color: "bg-orange-500"
+  },
+  "Tony Elumelu Foundation Entrepreneurship Programme": {
+    emoji: "🟢",
+    label: "Ongoing",
+    color: "bg-emerald-500"
+  }
+}
+
 export default function LandingPage() {
+  const router = useRouter()
   const [currentYear, setCurrentYear] = useState<number | null>(null)
   const [currentOpportunityIndex, setCurrentOpportunityIndex] = useState(0)
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null)
+  const [trendingOpportunities, setTrendingOpportunities] = useState<TrendingOpportunity[]>([])
+  const [loadingTrending, setLoadingTrending] = useState(true)
+  const [startingApplication, setStartingApplication] = useState<string | null>(null)
 
   useEffect(() => {
     setCurrentYear(new Date().getFullYear())
+
+    // Fetch trending opportunities
+    const fetchTrending = async () => {
+      try {
+        const supabase = createClient()
+        const { data, error } = await supabase
+          .from("opportunities")
+          .select("id, title, organization, description, deadline, education_level, work_experience, geographic_eligibility, field_of_study")
+          .in("title", TRENDING_TITLES)
+          .eq("is_public", true)
+          .eq("status", "active")
+
+        if (error) {
+          console.error("Error fetching trending:", error)
+        } else if (data) {
+          // Sort to match our preferred order
+          const sorted = TRENDING_TITLES.map(title =>
+            data.find(opp => opp.title === title)
+          ).filter(Boolean) as TrendingOpportunity[]
+          setTrendingOpportunities(sorted)
+        }
+      } catch (err) {
+        console.error("Error:", err)
+      } finally {
+        setLoadingTrending(false)
+      }
+    }
+
+    fetchTrending()
   }, [])
 
   useEffect(() => {
@@ -83,6 +156,57 @@ export default function LandingPage() {
 
   const toggleFaq = (index: number) => {
     setOpenFaqIndex(openFaqIndex === index ? null : index)
+  }
+
+  const handleStartApplication = async (opportunityId: string) => {
+    setStartingApplication(opportunityId)
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+
+      if (!user) {
+        router.push("/auth/signin")
+        return
+      }
+
+      // Check if application already exists
+      const { data: existingApp } = await supabase
+        .from("user_applications")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("opportunity_id", opportunityId)
+        .single()
+
+      if (existingApp) {
+        router.push(`/dashboard/applications/${existingApp.id}`)
+        return
+      }
+
+      // Create new application
+      const { data: newApp, error } = await supabase
+        .from("user_applications")
+        .insert({
+          user_id: user.id,
+          opportunity_id: opportunityId,
+          answers: [],
+          status: "in_progress",
+        })
+        .select("id")
+        .single()
+
+      if (error) throw error
+
+      router.push(`/dashboard/applications/${newApp.id}`)
+    } catch (err) {
+      console.error("Error starting application:", err)
+      setStartingApplication(null)
+    }
+  }
+
+  const formatDeadline = (deadline: string | null) => {
+    if (!deadline) return "Rolling"
+    const date = new Date(deadline)
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
   }
 
   return (
@@ -191,6 +315,153 @@ export default function LandingPage() {
           </motion.div>
         </motion.div>
       </section>
+
+      {/* Trending Opportunities Section */}
+      <motion.section
+        className="py-16 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-950"
+        {...fadeInUp}
+      >
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-12">
+            <motion.h2
+              className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-3"
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+            >
+              🔥 Trending Opportunities
+            </motion.h2>
+            <p className="text-lg text-gray-600 dark:text-gray-400">
+              Most applied scholarships this week
+            </p>
+          </div>
+
+          {loadingTrending ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+            </div>
+          ) : trendingOpportunities.length > 0 ? (
+            <motion.div
+              className="grid md:grid-cols-3 gap-6"
+              variants={staggerContainer}
+              initial="hidden"
+              whileInView="show"
+              viewport={{ once: true }}
+            >
+              {trendingOpportunities.map((opp) => {
+                const badge = TRENDING_BADGES[opp.title] || { emoji: "✨", label: "Featured", color: "bg-amber-500" }
+                return (
+                  <motion.div
+                    key={opp.id}
+                    variants={staggerItem}
+                    whileHover={{ y: -8, scale: 1.02 }}
+                    className="relative bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 shadow-lg hover:shadow-2xl transition-all duration-300 group overflow-hidden"
+                  >
+                    {/* Decorative gradient overlay */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 via-transparent to-orange-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+                    {/* Badge */}
+                    <div className={`absolute -top-1 -right-1 ${badge.color} text-white text-xs font-bold px-3 py-1.5 rounded-bl-xl rounded-tr-xl flex items-center gap-1.5 shadow-lg`}>
+                      <span>{badge.emoji}</span>
+                      <span>{badge.label}</span>
+                    </div>
+
+                    {/* Content */}
+                    <div className="relative">
+                      <div className="w-12 h-12 bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-900/30 dark:to-orange-900/30 rounded-xl flex items-center justify-center mb-4">
+                        <GraduationCap className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+                      </div>
+
+                      <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-1 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors line-clamp-2">
+                        {opp.title}
+                      </h3>
+
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                        {opp.organization}
+                      </p>
+
+                      {opp.description && (
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-2">
+                          {opp.description}
+                        </p>
+                      )}
+
+                      {/* Qualification Tags */}
+                      <div className="flex flex-wrap gap-1.5 mb-4">
+                        {opp.education_level && (
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                            📚 {opp.education_level}
+                          </span>
+                        )}
+                        {opp.geographic_eligibility && (
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                            🌍 {opp.geographic_eligibility}
+                          </span>
+                        )}
+                        {opp.field_of_study && opp.field_of_study !== "Any Field" && (
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                            🎓 {opp.field_of_study}
+                          </span>
+                        )}
+                        {opp.work_experience && opp.work_experience !== "No Experience" && (
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                            💼 {opp.work_experience}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Deadline */}
+                      <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 mb-4">
+                        <Calendar className="w-3.5 h-3.5" />
+                        <span>Deadline: {formatDeadline(opp.deadline)}</span>
+                      </div>
+
+                      {/* Apply Button */}
+                      <motion.button
+                        onClick={() => handleStartApplication(opp.id)}
+                        disabled={startingApplication === opp.id}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 text-white font-semibold py-3 px-4 rounded-xl transition-all text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20"
+                      >
+                        {startingApplication === opp.id ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Starting...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-4 h-4" />
+                            Apply Now
+                            <ArrowRight className="w-4 h-4" />
+                          </>
+                        )}
+                      </motion.button>
+                    </div>
+                  </motion.div>
+                )
+              })}
+            </motion.div>
+          ) : null}
+
+          {/* View All Link */}
+          <motion.div
+            className="text-center mt-10"
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.3 }}
+          >
+            <Link
+              href="/dashboard/feed"
+              className="inline-flex items-center gap-2 text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 font-semibold transition-colors"
+            >
+              View all 60+ opportunities
+              <ChevronRight className="w-5 h-5" />
+            </Link>
+          </motion.div>
+        </div>
+      </motion.section>
 
       {/* How It Works Section */}
       <motion.section

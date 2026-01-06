@@ -555,26 +555,26 @@ export default function DashboardPage() {
                     <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">{opp.organization}</p>
 
                     {/* Qualification Tags */}
-                    {(opp.education_level || opp.geographic_eligibility || opp.funding_amount || opp.field_of_study) && (
+                    {(opp.education_level || opp.geographic_eligibility || opp.field_of_study || opp.work_experience) && (
                       <div className="flex flex-wrap gap-1 mb-3">
-                        {opp.funding_amount && (
-                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
-                            {opp.funding_amount}
-                          </span>
-                        )}
                         {opp.education_level && (
                           <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                            {opp.education_level}
+                            📚 {opp.education_level}
                           </span>
                         )}
                         {opp.geographic_eligibility && (
                           <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
-                            {opp.geographic_eligibility}
+                            🌍 {opp.geographic_eligibility}
                           </span>
                         )}
                         {opp.field_of_study && opp.field_of_study !== "Any Field" && (
                           <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                            {opp.field_of_study}
+                            🎓 {opp.field_of_study}
+                          </span>
+                        )}
+                        {opp.work_experience && opp.work_experience !== "No Experience" && (
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                            💼 {opp.work_experience}
                           </span>
                         )}
                       </div>
