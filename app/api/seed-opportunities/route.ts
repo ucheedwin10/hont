@@ -468,7 +468,7 @@ export async function POST(request: Request) {
     // Verify admin key for security
     const { adminKey } = await request.json()
 
-    if (adminKey !== process.env.ADMIN_SEED_KEY && adminKey !== "seed-opportunities-2024") {
+   if (adminKey !== process.env.ADMIN_SEED_KEY) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -501,7 +501,7 @@ export async function POST(request: Request) {
 
 export async function GET() {
   return NextResponse.json({
-    message: "POST to this endpoint with { adminKey: 'seed-opportunities-2024' } to seed the database",
+    message: "POST to this endpoint with a valid adminKey to seed the database",
     opportunityCount: opportunities.length
   })
 }
