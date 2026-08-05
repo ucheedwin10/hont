@@ -11,7 +11,7 @@ export interface AIConfig {
 
 const DEFAULT_MODELS = {
   gemini: 'gemini-1.5-flash',  // Free tier model
-  claude: 'claude-sonnet-4-20250514',
+  claude: 'cclaude-sonnet-4-6',
   openai: 'gpt-4o-mini',
 } as const;
 
